@@ -1,4 +1,4 @@
-# 🚀 Tech Challenge Fase 2 - ToggleMaster Microservices
+﻿# 🚀 Tech Challenge Fase 2 - ToggleMaster Microservices
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
@@ -634,3 +634,187 @@ kubect exec <nome pod> -- env
 ## 📄 Licença
 
 Este projeto é apenas para fins educacionais como parte do programa de pós-graduação devops arquitetura Cloud da instituição FIAP.
+
+---
+
+# GitOps + ArgoCD - Fase 3
+
+## Fluxo GitOps
+
+```
+Edson (Terraform)  -->  Sandro (CI/CD)               -->  Renan (ArgoCD)
+Cria EKS + ECR          Build, push da imagem              ArgoCD detecta mudanca
+na AWS                  Atualiza tag no deployment.yaml     Deploy automatico no cluster
+```
+
+Esta secao descreve como o ArgoCD monitora este repositorio e aplica automaticamente qualquer alteracao nos manifestos Kubernetes no cluster EKS, sem intervencao manual.
+
+---
+
+## Pre-requisitos
+
+- Cluster EKS ja provisionado (via Terraform - ver secao anterior)
+- `kubectl` configurado apontando para o cluster:
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name fiap-tc-f2-eks
+kubectl get nodes
+```
+
+---
+
+## Instalacao do ArgoCD no Cluster
+
+**1. Criar o namespace e instalar o ArgoCD:**
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+**2. Aguardar todos os pods ficarem Running (aguarde ~3 minutos):**
+
+```bash
+kubectl get pods -n argocd -w
+```
+
+---
+
+## Acessar o Painel do ArgoCD
+
+**1. Abrir o port-forward (deixe este terminal aberto):**
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+**2. Abrir um segundo terminal para os proximos comandos.**
+
+**3. Acessar no navegador:** http://localhost:8080
+
+> Se aparecer aviso de certificado, clique em Avancado > Prosseguir para localhost.
+
+**4. Obter a senha do usuario `admin`:**
+
+```bash
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}"
+```
+
+Copie o resultado e decodifique:
+
+```bash
+# Linux / macOS
+echo "<VALOR_COPIADO>" | base64 -d
+
+# Windows (PowerShell)
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("VALOR_COPIADO"))
+```
+
+Use `admin` como usuario e a senha decodificada para fazer login.
+
+---
+
+## Conectar o ArgoCD a Este Repositorio
+
+Aplique o manifesto `Application` do ArgoCD. Ele instrui o ArgoCD a observar a pasta `k8s/common` (Kustomize) deste repositorio e sincronizar com o namespace `fiap-tc-f2` no cluster EKS:
+
+```bash
+kubectl apply -f argocd/application.yaml
+```
+
+No painel do ArgoCD aparecera o cartao **togglemaster** com todos os recursos: Deployments, Services, HPA e Ingress.
+
+> O arquivo `argocd/application.yaml` esta neste repositorio e aponta para:
+> - **Repositorio:** https://github.com/renanguedesgs/ToggleMaster-Microservices
+> - **Branch:** `main`
+> - **Caminho:** `k8s/common` (Kustomize)
+> - **Destino:** namespace `fiap-tc-f2` no cluster EKS
+
+---
+
+## Demonstrar o GitOps na Pratica (para a banca)
+
+O objetivo e mostrar uma mudanca sendo aplicada automaticamente apos o merge de um PR, sem nenhum `kubectl apply` manual.
+
+### Exemplo: aumentar replicas do auth-service
+
+**1. Edite o deployment** `k8s/auth-service/auth-service-deployment.yml`
+
+Localize e altere (ou adicione) o campo `replicas` logo abaixo de `spec:`:
+
+```yaml
+# Antes
+spec:
+  selector:
+
+# Depois
+spec:
+  replicas: 3
+  selector:
+```
+
+**2. Commit e push para a branch `main`:**
+
+```bash
+git add k8s/auth-service/auth-service-deployment.yml
+git commit -m "scale auth-service para 3 replicas"
+git push origin main
+```
+
+**3. Observar no painel do ArgoCD (http://localhost:8080):**
+
+- Em ate 3 minutos o ArgoCD detecta a divergencia
+- O status muda de **Synced** para **OutOfSync**
+- O ArgoCD aplica a mudanca automaticamente (auto-sync ativado)
+- O status volta para **Synced**
+- Na arvore de recursos e possivel ver o Deployment, os 3 Pods, o Service e o HPA mudando de status em tempo real
+
+**4. Confirmar os pods pelo terminal:**
+
+```bash
+kubectl get pods -n fiap-tc-f2 -w
+```
+
+Voce vera 3 pods do `auth-service` com status `Running`.
+
+---
+
+## Verificacoes Rapidas
+
+```bash
+# Status geral da aplicacao no ArgoCD
+kubectl get applications -n argocd
+
+# Todos os recursos do namespace
+kubectl get all -n fiap-tc-f2
+
+# Ver o Ingress e o endereco do Load Balancer
+kubectl get ingress -n fiap-tc-f2
+
+# Ver HPAs em tempo real
+kubectl get hpa -n fiap-tc-f2 -w
+```
+
+---
+
+## Sincronizacao Manual (se necessario)
+
+Caso queira forcar uma sincronizacao sem esperar o intervalo automatico:
+
+```bash
+# Via painel: clique no cartao "togglemaster" > botao SYNC
+
+# Via CLI do ArgoCD (instale com: brew install argocd ou choco install argocd)
+argocd app sync togglemaster
+```
+
+---
+
+## Troubleshooting ArgoCD
+
+| Sintoma | Causa Provavel | Solucao |
+|---------|----------------|---------|
+| App fica em OutOfSync indefinidamente | Auto-sync nao ativado | Painel > App Details > Enable Auto-Sync |
+| ComparisonError no painel | Repositorio privado sem credenciais | Settings > Repositories > adicionar repo |
+| Pods em ImagePullBackOff | Tag de imagem incorreta ou ECR sem permissao | Verificar tag no deployment e permissoes do node group |
+| ArgoCD nao detecta mudanca | Branch errada no application.yaml | Confirmar que targetRevision e main |
