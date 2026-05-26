@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: fiap-tc-f2-local
+
+resources:
+  - namespace.yml
+  - postgres.yml
+  - redis.yml
+  - auth-service.yml
+  - flag-service.yml
+  - targeting-service.yml
+  - evaluation-service.yml
+  - analytics-service.yml
+  - ingress.yml
