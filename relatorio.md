@@ -5,46 +5,46 @@
 
 ---
 
-## VISAO GERAL
+## RESULTADO FINAL NO PAINEL DO ARGOCD
 
-1. Build das 5 imagens localmente com docker build
-2. ArgoCD instalado no cluster local do Docker Desktop
-3. ArgoCD monitora a pasta k8s/local do GitHub na branch main
-4. Voce edita um manifesto e faz git push
-5. ArgoCD detecta e aplica sozinho no cluster sem kubectl apply manual
-6. A banca ve tudo acontecendo no painel do ArgoCD em tempo real
+O painel vai mostrar 5 cartoes separados, um por microsservico:
+
+- analytics-application  ->  namespace: analytics-ns  ->  path: k8s/apps/analytics-service
+- auth-application       ->  namespace: auth-ns        ->  path: k8s/apps/auth-service
+- evaluation-application ->  namespace: evaluation-ns  ->  path: k8s/apps/evaluation-service
+- flag-application       ->  namespace: flag-ns        ->  path: k8s/apps/flag-service
+- targeting-application  ->  namespace: targeting-ns   ->  path: k8s/apps/targeting-service
+
+Cada cartao com Labels, Status Healthy + Synced, Repository, Target Revision main e Namespace proprio.
 
 ---
 
-## PRE-REQUISITOS (fazer antes de gravar, nao aparece no video)
+## PRE-REQUISITOS (fazer ANTES de gravar, nao aparece no video)
 
 Habilitar Kubernetes no Docker Desktop:
 - Abra o Docker Desktop
-- Clique em Settings (engrenagem no canto superior direito)
-- Clique em Kubernetes no menu lateral
-- Marque Enable Kubernetes
-- Clique em Apply and Restart
-- Aguarde o icone do Kubernetes ficar verde no canto inferior esquerdo
+- Settings > Kubernetes > Enable Kubernetes > Apply and Restart
+- Aguarde o icone verde no canto inferior esquerdo
 
 ---
 
 ## PARTE 1 - Confirmar que o Kubernetes esta rodando
 
-Onde: Terminal (Git Bash ou Prompt de Comando)
+Onde: Terminal (Git Bash)
 Quando: Primeira coisa do video
 
 ```bash
 kubectl get nodes
 ```
 
-O que falar: O Docker Desktop sobe um cluster chamado docker-desktop.
-STATUS Ready significa que estamos prontos para comecar.
+O que falar: Confirmo que o cluster local esta rodando com Docker Desktop.
+Node chamado docker-desktop com STATUS Ready significa que estamos prontos.
 
 ---
 
 ## PARTE 2 - Build das imagens dos microsservicos
 
-Onde: Mesmo terminal
+Onde: Terminal, na pasta raiz do projeto
 Quando: Logo apos confirmar o node Ready
 
 ```bash
@@ -57,9 +57,8 @@ O que falar: Entro na pasta raiz do projeto onde estao os Dockerfiles de cada se
 docker build -t auth-service:local ./auth-service
 ```
 
-O que falar: Buildo a imagem do auth-service com a tag local.
-Os manifestos usam imagePullPolicy Never, entao o Kubernetes usa essa imagem local
-sem tentar baixar do ECR da AWS.
+O que falar: Buildo a imagem do auth-service com a tag local. Os manifestos usam imagePullPolicy Never,
+entao o Kubernetes usa essa imagem diretamente sem baixar do ECR da AWS.
 
 ```bash
 docker build -t flag-service:local ./flag-service
@@ -108,28 +107,28 @@ O que falar: Crio o namespace dedicado para o ArgoCD, separado dos microsservico
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
-O que falar: Instalo o ArgoCD com o manifesto oficial. Esse comando sobe o servidor web,
-o controller que monitora o Git e todos os componentes internos dele.
+O que falar: Instalo o ArgoCD com o manifesto oficial. Sobe o servidor web,
+o controller que monitora o Git e todos os componentes internos.
 
 ```bash
 kubectl get pods -n argocd -w
 ```
 
-O que falar: Monitoro os pods subindo. Aguardo todos ficarem STATUS Running.
-Leva cerca de 2 a 3 minutos. Quando todos estiverem Running pressione Ctrl+C.
+O que falar: Monitoro os pods subindo. Aguardo todos ficarem Running. Leva 2 a 3 minutos.
+Quando todos estiverem Running pressione Ctrl+C.
 
 ---
 
 ## PARTE 4 - Abrir o painel do ArgoCD
 
 Onde: Terminal 1 - DEIXAR ABERTO durante todo o video
-Quando: Assim que todos os pods do ArgoCD estiverem Running
+Quando: Todos os pods do ArgoCD em Running
 
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-O que falar: Faco um port-forward para acessar o painel localmente na porta 8080.
+O que falar: Port-forward para acessar o painel na porta 8080 localmente.
 Esse terminal precisa ficar aberto. Se fechar, o painel cai.
 
 Abra um SEGUNDO terminal para os proximos comandos.
@@ -139,7 +138,7 @@ Abra um SEGUNDO terminal para os proximos comandos.
 ## PARTE 5 - Pegar a senha e logar
 
 Onde: Terminal 2
-Quando: Logo apos o port-forward estar ativo no Terminal 1
+Quando: Port-forward ativo no Terminal 1
 
 ```bash
 kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}"
@@ -147,20 +146,20 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.pas
 
 O que falar: Busco a senha do admin. Fica armazenada como Secret do Kubernetes em Base64.
 
-Copie o valor retornado e rode no Git Bash para decodificar:
+Copie o valor e rode no Git Bash:
 
 ```bash
 echo COLE_AQUI | base64 -d
 ```
 
-O que falar: Decodifico o Base64 para obter a senha legivel.
+O que falar: Decodifico para obter a senha legivel.
 
 Abra o navegador em: http://localhost:8080
 Se aparecer aviso de certificado: Advanced > Proceed to localhost
-Login: admin | Senha: resultado do decode acima
+Login: admin | Senha: resultado do decode
 
 O que falar ao mostrar o painel: Painel do ArgoCD aberto, ainda vazio.
-O proximo passo e conectar ao repositorio do GitHub.
+Vou aplicar as Applications agora para ele comecar a monitorar cada microsservico individualmente.
 
 ---
 
@@ -168,80 +167,142 @@ O proximo passo e conectar ao repositorio do GitHub.
 
 Se o repositorio for PUBLICO, pule para a Parte 7.
 
-Onde: Painel do ArgoCD no navegador em http://localhost:8080
-Quando: Antes de aplicar o application.yaml
+Onde: Painel do ArgoCD no navegador
+Quando: Antes de aplicar os YAMLs
 
-Passos no painel:
-- Menu lateral: Settings > Repositories > Connect Repo
+- Settings > Repositories > Connect Repo
 - Connection Method: HTTPS
-- Repository URL: https://github.com/renanguedesgs/ToggleMaster-Microservices
-- Coloque seu username e Personal Access Token do GitHub como senha
-- Clique Connect e aguarde aparecer Successful
+- URL: https://github.com/renanguedesgs/ToggleMaster-Microservices
+- Username e Personal Access Token do GitHub
+- Clique Connect
 
-O que falar: Repositorio privado, entao autentico o ArgoCD para ele ler os manifestos.
+O que falar: Autenticar o ArgoCD para ele conseguir ler os manifestos do repositorio privado.
 
 ---
 
-## PARTE 7 - Conectar o ArgoCD ao repositorio
+## PARTE 7 - Remover a Application antiga (se existir)
 
 Onde: Terminal 2
-Quando: Apos estar logado e ter registrado o repo se necessario
+Quando: Antes de aplicar as novas Applications
+
+Se voce ja tinha uma Application chamada togglemaster rodando, delete ela agora:
 
 ```bash
-kubectl apply -f argocd/application.yaml
+kubectl delete application togglemaster -n argocd
 ```
 
-O que falar: Aplico o manifesto Application que ja esta no repositorio.
-Ele instrui o ArgoCD a monitorar a pasta k8s/local na branch main
-e manter o cluster sempre sincronizado com o que esta no Git.
-Essa pasta tem os manifestos adaptados para o ambiente local:
-imagens buildadas aqui mesmo, PostgreSQL e Redis como pods no cluster
-em vez dos servicos da AWS.
+O que falar: Removo a Application anterior que usava um unico cartao para tudo.
+Agora vamos subir 5 Applications separadas, uma por microsservico,
+igual ao modelo que o professor vai avaliar.
+
+Se nao tiver nenhuma Application antiga, ignore este passo e va para a Parte 8.
+
+---
+
+## PARTE 8 - Subir a infraestrutura base
+
+Onde: Terminal 2
+Quando: Apos remover a Application antiga
+
+```bash
+kubectl apply -f argocd/infra-application.yaml
+```
+
+O que falar: Primeiro subo a Application de infraestrutura.
+Ela cria os 5 namespaces e sobe o PostgreSQL e o Redis dentro do cluster.
+Os microsservicos precisam desses recursos para funcionar.
+
+Aguarde no painel aparecer o cartao infra-application com status Synced antes de continuar.
+
+```bash
+kubectl get pods -n auth-ns
+```
+
+O que falar: Confirmo que o PostgreSQL no namespace auth-ns esta Running.
+
+```bash
+kubectl get pods -n evaluation-ns
+```
+
+O que falar: Confirmo que o Redis no namespace evaluation-ns esta Running.
+
+---
+
+## PARTE 9 - Aplicar as 5 Applications dos microsservicos
+
+Onde: Terminal 2
+Quando: infra-application Synced e pods de infra Running
+
+```bash
+kubectl apply -f argocd/auth-application.yaml
+kubectl apply -f argocd/flag-application.yaml
+kubectl apply -f argocd/targeting-application.yaml
+kubectl apply -f argocd/evaluation-application.yaml
+kubectl apply -f argocd/analytics-application.yaml
+```
+
+O que falar: Aplico as 5 Applications de uma vez, uma por microsservico.
+Cada uma aponta para seu proprio caminho no Git e seu proprio namespace isolado.
+O ArgoCD vai sincronizar cada uma de forma independente e paralela.
 
 Volte para o navegador em http://localhost:8080
 
-O que falar: O cartao togglemaster apareceu no painel.
-O ArgoCD ja exibe a arvore: 5 Deployments, PostgreSQL, Redis, Services e Ingress.
-Status Synced confirma que o cluster esta identico ao Git.
+O que falar: Agora vemos 5 cartoes no painel:
+analytics-application, auth-application, evaluation-application, flag-application e targeting-application.
+Cada cartao mostra o label do servico, o namespace proprio, o path no Git e o status.
+Em alguns instantes todos ficam Healthy e Synced, igualzinho a referencia.
 
 ---
 
-## PARTE 8 - Confirmar os pods rodando
+## PARTE 10 - Confirmar os pods de cada servico
 
 Onde: Terminal 2
-Quando: Apos o status Synced aparecer no painel
+Quando: Todos os 5 cartoes Synced no painel
 
 ```bash
-kubectl get pods -n fiap-tc-f2
+kubectl get pods -n auth-ns
 ```
 
-O que falar: Todos os pods Running no namespace fiap-tc-f2.
-Os 5 microsservicos mais PostgreSQL e Redis rodando localmente.
+O que falar: Pod do auth-service rodando no namespace auth-ns.
 
 ```bash
-kubectl get services -n fiap-tc-f2
+kubectl get pods -n flag-ns
 ```
 
-O que falar: Services de cada microsservico para comunicacao interna entre eles.
+O que falar: Pod do flag-service no namespace flag-ns.
 
 ```bash
-kubectl get ingress -n fiap-tc-f2
+kubectl get pods -n targeting-ns
 ```
 
-O que falar: Ingress com as rotas /auth /flags /targeting /evaluate /analytics.
+O que falar: Pod do targeting-service no namespace targeting-ns.
+
+```bash
+kubectl get pods -n evaluation-ns
+```
+
+O que falar: Pod do evaluation-service junto com o Redis no namespace evaluation-ns.
+
+```bash
+kubectl get pods -n analytics-ns
+```
+
+O que falar: Pod do analytics-service no namespace analytics-ns.
+Cada microsservico isolado no seu proprio namespace. Boa pratica de separacao no Kubernetes.
 
 ---
 
-## PARTE 9 - DEMONSTRACAO GITOPS (cena principal para a banca)
+## PARTE 11 - DEMONSTRACAO GITOPS (cena principal para a banca)
 
 ANTES de comecar: posicione o painel do ArgoCD e o Terminal 2 lado a lado na tela.
+Clique no cartao auth-application para deixar a arvore de recursos visivel.
 
-### 9.1 - Editar o manifesto
+### 11.1 - Editar o manifesto
 
-Onde: VS Code ou qualquer editor de texto
-Quando: Com o painel visivel em paralelo na tela
+Onde: VS Code
+Quando: Com o painel e a arvore do auth-application visiveis
 
-Abra o arquivo: k8s/local/auth-service.yml
+Abra o arquivo: k8s/apps/auth-service/auth-service.yml
 
 Encontre o bloco do Deployment e mude replicas de 1 para 3:
 
@@ -259,19 +320,17 @@ spec:
 
 Salve com Ctrl+S.
 
-O que falar: Estou aumentando as replicas do auth-service de 1 para 3.
-Isso simula o que acontece na vida real ao escalar um servico.
-Importante: estou apenas editando o arquivo no repositorio.
-Nenhum kubectl apply sera executado por mim.
-O ArgoCD vai detectar e aplicar automaticamente.
+O que falar: Vou escalar o auth-service de 1 para 3 replicas.
+Estou apenas editando o arquivo no repositorio local.
+Nenhum kubectl apply sera feito. O ArgoCD vai detectar e aplicar automaticamente.
 
-### 9.2 - Commitar e fazer push
+### 11.2 - Commitar e fazer push
 
 Onde: Terminal 2
 Quando: Imediatamente apos salvar o arquivo
 
 ```bash
-git add k8s/local/auth-service.yml
+git add k8s/apps/auth-service/auth-service.yml
 ```
 
 O que falar: Adiciono o arquivo ao stage do Git.
@@ -280,84 +339,100 @@ O que falar: Adiciono o arquivo ao stage do Git.
 git commit -m "scale auth-service para 3 replicas"
 ```
 
-O que falar: Crio o commit descrevendo a mudanca.
+O que falar: Commit descrevendo a mudanca.
 
 ```bash
 git push origin main
 ```
 
-O que falar: Envio para a branch main do GitHub.
-A partir desse momento o ArgoCD detecta que o repositorio mudou em relacao ao cluster.
+O que falar: Envio para a branch main. A partir daqui o ArgoCD detecta a divergencia.
 
-### 9.3 - Observar a sincronizacao no painel
+### 11.3 - Observar no painel
 
 Onde: Navegador em http://localhost:8080
-Quando: Logo apos o git push, fique olhando o painel
+Quando: Logo apos o git push, fique olhando o cartao auth-application
 
-O que falar: Em alguns instantes o status muda de Synced para OutOfSync.
-O ArgoCD detectou a diferenca entre o Git e o cluster.
+O que falar: O status do cartao auth-application muda para OutOfSync.
+O ArgoCD detectou que o cluster tem 1 replica mas o Git diz 3.
+Agora ele aplica automaticamente. O status volta para Synced.
+Na arvore vemos os 3 pods do auth-service subindo em tempo real,
+junto com o Service e o HPA. Nenhum kubectl apply foi executado.
 
-O que falar quando sincronizar: O ArgoCD aplica automaticamente.
-Status voltou para Synced.
-Clicando no cartao togglemaster vemos a arvore com os 3 pods subindo em tempo real.
-Nenhum kubectl apply foi executado.
-
-### 9.4 - Confirmar no terminal
+### 11.4 - Confirmar no terminal
 
 Onde: Terminal 2
 Quando: Enquanto mostra o painel sincronizando
 
 ```bash
-kubectl get pods -n fiap-tc-f2 -w
+kubectl get pods -n auth-ns -w
 ```
 
-O que falar: Confirmo em tempo real os 3 pods do auth-service rodando.
+O que falar: Confirmo os 3 pods do auth-service rodando no namespace auth-ns.
 So um git push foi necessario.
 O Git e a unica fonte de verdade e o cluster converge automaticamente.
 Pressione Ctrl+C apos mostrar os 3 pods Running.
 
 ---
 
-## PARTE 10 - Encerramento
+## PARTE 12 - Encerramento
 
 O que falar:
-Resumindo o que demonstramos: 5 microsservicos rodando no Kubernetes local
-com PostgreSQL e Redis dentro do proprio cluster.
-O ArgoCD monitora a pasta k8s/local na branch main do GitHub.
-Qualquer commit aplicado nessa branch e detectado e implantado automaticamente,
+Demonstramos o GitOps com ArgoCD rodando localmente.
+Temos 5 microsservicos, cada um com sua propria Application no ArgoCD,
+seu proprio namespace e seus recursos completamente isolados.
+Qualquer mudanca commitada na branch main e detectada e aplicada automaticamente
 sem nenhuma intervencao manual.
-O fluxo e: desenvolvedor edita o manifesto, faz git push,
-ArgoCD detecta a divergencia, aplica a mudanca, cluster converge para o novo estado.
-Isso e GitOps.
+O Git e a unica fonte de verdade do estado do cluster.
 
 ---
 
 ## CHECKLIST - Confirme antes de apertar REC
 
-[ ] Docker Desktop com Kubernetes verde no canto inferior esquerdo
-[ ] kubectl get nodes mostra STATUS Ready
-[ ] docker images grep local mostra as 5 imagens buildadas
-[ ] kubectl get pods -n argocd mostra todos Running
-[ ] Terminal 1 com port-forward ativo: http://localhost:8080 abre o painel
-[ ] Logado como admin no painel
-[ ] kubectl apply -f argocd/application.yaml ja executado
-[ ] Cartao togglemaster com status Synced no painel
-[ ] kubectl get pods -n fiap-tc-f2 todos Running
-[ ] Painel e Terminal 2 posicionados lado a lado antes de comecar a Parte 9
+- Docker Desktop com Kubernetes verde no canto inferior esquerdo
+- kubectl get nodes retorna STATUS Ready
+- docker images grep local mostra as 5 imagens buildadas
+- kubectl get pods -n argocd todos Running
+- Terminal 1 com port-forward ativo: http://localhost:8080 abre o painel
+- Logado como admin no painel
+- Application antiga deletada se existia (kubectl delete application togglemaster -n argocd)
+- infra-application aplicada e Synced no painel
+- PostgreSQL Running em auth-ns, flag-ns e targeting-ns
+- Redis Running em evaluation-ns
+- 5 Applications aplicadas e todas Synced no painel
+- Todos os pods Running em seus respectivos namespaces
+- Cartao auth-application aberto com arvore visivel antes da Parte 11
+- Painel e Terminal 2 posicionados lado a lado
 
 ---
 
-## ARQUIVOS CRIADOS PARA O AMBIENTE LOCAL
+## ESTRUTURA DOS ARQUIVOS
 
-k8s/local/kustomization.yml      - lista os recursos para o ArgoCD ler via Kustomize
-k8s/local/namespace.yml          - cria o namespace fiap-tc-f2
-k8s/local/postgres.yml           - PostgreSQL local (substitui o RDS da AWS)
-k8s/local/redis.yml              - Redis local (substitui o ElastiCache da AWS)
-k8s/local/auth-service.yml       - Secret + ConfigMap + Deployment + Service
-k8s/local/flag-service.yml       - Secret + ConfigMap + Deployment + Service
-k8s/local/targeting-service.yml  - Secret + ConfigMap + Deployment + Service
-k8s/local/evaluation-service.yml - Secret + ConfigMap + Deployment + Service
-k8s/local/analytics-service.yml  - Secret + ConfigMap + Deployment + Service
-k8s/local/ingress.yml            - Ingress com rotas para os 5 microsservicos
+argocd/
+  infra-application.yaml        namespaces + PostgreSQL + Redis
+  auth-application.yaml         auth-service no namespace auth-ns
+  flag-application.yaml         flag-service no namespace flag-ns
+  targeting-application.yaml    targeting-service no namespace targeting-ns
+  evaluation-application.yaml   evaluation-service no namespace evaluation-ns
+  analytics-application.yaml    analytics-service no namespace analytics-ns
 
-argocd/application.yaml          - aponta para k8s/local, branch main, auto-sync ativo
+k8s/apps/
+  infra/
+    kustomization.yml
+    namespace.yml                cria os 5 namespaces
+    postgres.yml                 PostgreSQL em auth-ns, flag-ns e targeting-ns
+    redis.yml                    Redis em evaluation-ns
+  auth-service/
+    kustomization.yml
+    auth-service.yml             Secret + ConfigMap + Deployment + Service + HPA
+  flag-service/
+    kustomization.yml
+    flag-service.yml
+  targeting-service/
+    kustomization.yml
+    targeting-service.yml
+  evaluation-service/
+    kustomization.yml
+    evaluation-service.yml
+  analytics-service/
+    kustomization.yml
+    analytics-service.yml

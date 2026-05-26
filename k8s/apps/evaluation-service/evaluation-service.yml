@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: evaluation-service-secret
+  namespace: evaluation-ns
+type: Opaque
+stringData:
+  SERVICE_API_KEY: "tm_key_local_evaluation"
+  AWS_ACCESS_KEY_ID: "dummy"
+  AWS_SECRET_ACCESS_KEY: "dummy"
+  AWS_SESSION_TOKEN: "dummy"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evaluation-service-config-map
+  namespace: evaluation-ns
+data:
+  AUTH_SERVICE_URL: "http://auth-service-svc.auth-ns.svc.cluster.local:8001"
+  FLAG_SERVICE_URL: "http://flag-service-svc.flag-ns.svc.cluster.local:8002"
+  TARGETING_SERVICE_URL: "http://targeting-service-svc.targeting-ns.svc.cluster.local:8003"
+  PORT: "8004"
+  REDIS_URL: "redis://redis-svc:6379"
+  AWS_SQS_URL: "http://dummy-sqs:4566"
+  AWS_REGION: "us-east-1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evaluation-service
+  namespace: evaluation-ns
+  labels:
+    app: evaluation-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evaluation-service
+  template:
+    metadata:
+      labels:
+        app: evaluation-service
+    spec:
+      containers:
+        - name: evaluation-service
+          image: evaluation-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8004
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: SERVICE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: evaluation-service-secret
+                  key: SERVICE_API_KEY
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: evaluation-service-secret
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: evaluation-service-secret
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_SESSION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: evaluation-service-secret
+                  key: AWS_SESSION_TOKEN
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: PORT
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: REDIS_URL
+            - name: AWS_SQS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: AWS_SQS_URL
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: AWS_REGION
+            - name: FLAG_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: FLAG_SERVICE_URL
+            - name: TARGETING_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: TARGETING_SERVICE_URL
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evaluation-service-config-map
+                  key: AUTH_SERVICE_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: evaluation-service-svc
+  namespace: evaluation-ns
+spec:
+  selector:
+    app: evaluation-service
+  ports:
+    - port: 8004
+      targetPort: 8004
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: evaluation-service-hpa
+  namespace: evaluation-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: evaluation-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

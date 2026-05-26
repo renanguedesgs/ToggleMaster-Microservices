@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: flag-service-secret
+  namespace: flag-ns
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://postgres:postgres123@postgres-svc:5432/postgres?sslmode=disable"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flag-service-config-map
+  namespace: flag-ns
+data:
+  AUTH_SERVICE_URL: "http://auth-service-svc.auth-ns.svc.cluster.local:8001"
+  PORT: "8002"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flag-service
+  namespace: flag-ns
+  labels:
+    app: flag-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flag-service
+  template:
+    metadata:
+      labels:
+        app: flag-service
+    spec:
+      containers:
+        - name: flag-service
+          image: flag-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8002
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: flag-service-secret
+                  key: DATABASE_URL
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: flag-service-config-map
+                  key: PORT
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flag-service-config-map
+                  key: AUTH_SERVICE_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flag-service-svc
+  namespace: flag-ns
+spec:
+  selector:
+    app: flag-service
+  ports:
+    - port: 8002
+      targetPort: 8002
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flag-service-hpa
+  namespace: flag-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flag-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

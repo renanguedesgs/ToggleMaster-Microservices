@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: targeting-service-secret
+  namespace: targeting-ns
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://postgres:postgres123@postgres-svc:5432/postgres?sslmode=disable"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: targeting-service-config-map
+  namespace: targeting-ns
+data:
+  AUTH_SERVICE_URL: "http://auth-service-svc.auth-ns.svc.cluster.local:8001"
+  PORT: "8003"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: targeting-service
+  namespace: targeting-ns
+  labels:
+    app: targeting-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: targeting-service
+  template:
+    metadata:
+      labels:
+        app: targeting-service
+    spec:
+      containers:
+        - name: targeting-service
+          image: targeting-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8003
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: targeting-service-secret
+                  key: DATABASE_URL
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: targeting-service-config-map
+                  key: PORT
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: targeting-service-config-map
+                  key: AUTH_SERVICE_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: targeting-service-svc
+  namespace: targeting-ns
+spec:
+  selector:
+    app: targeting-service
+  ports:
+    - port: 8003
+      targetPort: 8003
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: targeting-service-hpa
+  namespace: targeting-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: targeting-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

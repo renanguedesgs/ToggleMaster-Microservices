@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flag-application
+  namespace: argocd
+  labels:
+    app: flag-service
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/renanguedesgs/ToggleMaster-Microservices
+    targetRevision: main
+    path: k8s/apps/flag-service
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flag-ns
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
